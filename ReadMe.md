@@ -265,5 +265,164 @@ fi
         - 생성된 ALB 도메인 네임을 검색
             - http://lab-web-alb-1384992291.ap-northeast-2.elb.amazonaws.com/
                 - 새로고침 할때마다 [ 2a, 2c ] 번갈아 가며 서버가 교체됩니다. 정상적으로 분산되어 있는것을 확인했습니다.
-                        
-         
+
+# VPC 와 중계 서버(Bastion) 구성하기
+
+가상의 네트워크에서 인터넷과 연결 또는 연결되지 않는 하위 네트워크를 만들고 다른 가상 서버와 연결하기 위한 중계 서버를 구성합니다.
+
+필요한 AWS 서비스
+
+- Amazon EC2
+- Amazon Virtual Private Cloud(VPC)
+- CIDR
+- Subnetting
+
+- Aws VPC 콘솔로 이동합니다.
+    - https://ap-northeast-2.console.aws.amazon.com/vpc/home?region=ap-northeast-2#
+- [가상 프라이빗 클라우드] 메뉴 탭에서 순서대로 진행합니다.
+    - [VPC] 탭으로 들어가면 처음에 존재하는 VPC 가 기본으로 존재합니다.
+        - [VPC 생성] 버튼 클릭
+            - [이름 태그] : lab-vpc 으로 작성
+            - [IPv4 CIDR 블록] : 서브넷 이상으로 가장 큰 ip 범위를 선언하는 칸 10.0.0.0/16 으로 작성
+    - [서브넷]
+        - [서브넷 생성] 1번째 서브넷 생성
+            - [이름 태그] : lab-web-public1-2a 으로 작성
+            - [VPC] : lab-vpc 선택
+            - [가용 영역] : 아시아 태평양 (서울) / ap-northeast-2a
+            - [IPv4 CIDR 블록] : 10.0.1.0/24 으로 작성하면 총 251개의 ip 를 사용할 수 있는 범위가 나옵니다.
+        - [서브넷 생성] 2번째 서브넷 생성
+            - [이름 태그] : lab-web-public2-2c 으로 작성
+            - [VPC] : lab-vpc 선택
+            - [가용 영역] : 아시아 태평양 (서울) / ap-northeast-2c
+            - [IPv4 CIDR 블록] : 10.0.2.0/24
+        - [서브넷 생성] 1번째 private 넷 생성
+            - [이름 태그] : lab-web-private1-2a 으로 작성
+            - [VPC] : lab-vpc 선택
+            - [가용 영역] : 아시아 태평양 (서울) / ap-northeast-2a
+            - [IPv4 CIDR 블록] : 10.0.3.0/24
+        - [서브넷 생성] 2번째 private 넷 생성
+            - [이름 태그] : lab-web-private2-2c 으로 작성
+            - [VPC] : lab-vpc 선택
+            - [가용 영역] : 아시아 태평양 (서울) / ap-northeast-2c
+            - [IPv4 CIDR 블록] : 10.0.4.0/24
+        - [서브넷 생성] 3번째 private 넷 생성
+            - [이름 태그] : lab-web-private3-2a 으로 작성
+            - [VPC] : lab-vpc 선택
+            - [가용 영역] : 아시아 태평양 (서울) / ap-northeast-2a
+            - [IPv4 CIDR 블록] : 10.0.5.0/24
+        - [서브넷 생성] 4번째 private 넷 생성
+            - [이름 태그] : lab-web-private4-2c 으로 작성
+            - [VPC] : lab-vpc 선택
+            - [가용 영역] : 아시아 태평양 (서울) / ap-northeast-2a
+            - [IPv4 CIDR 블록] : 10.0.6.0/24
+        - 이렇게 pulbic 2개와 private 4개 총 6개의 서브넷이 생성되었습니다.
+    - [인터넷 게이트웨이] 생성된 총 6개의 서브넷을 각각 public || private 로 구성하는 라우팅 작업을 진행합니다.
+        - [인터넷 게이트웨이 생성]
+            - [이름 태그] : lab-web-igw
+        - 생성된 인터넷 게이트웨이가 어느 VPC 의 트래픽을 연결해주는지 설정해줘야 합니다.
+        - lab-web-igw 게이트웨이 선택 후 [작업] 버튼 클릭 [VPC에 연결] 버튼 선택
+            - [사용 가능한 VPC] 방금 생성한 lab-vpc 선택
+        - lab-web-igw 게이트 웨이는 lab-vpc 를 통해서 통신을 하도록 하겠다고 설정을 하였습니다.
+    - [라우팅 테이블] 기본적으로 VPC 를 생성하면 따라서 생성되는 번들용 라우팅 테이블이 하나 존재합니다. 이를 이용해서 public 용으로 하나 생성할 것입니다. private 라우팅은 새로 만들도록 하겠습니다.
+        - [lab-vpc] 라우팅 테이블
+            - [이름 태그] : lab-web-rt-public
+            - [라우팅] 인터넷으로 트래픽이 나가도록 라우트를 넣어줍니다.
+                - [라우팅 편집] 라우팅 추가
+                    - [대상] : 0.0.0.0/0 모든 ip 주소는 타겟으로 가라고 명시
+                    - [대상] : lab-web-igw 방긍 생성한 인터넷 게이트를 선택합니다.
+            - [서브넷 연결] 라우팅 테이블을 타고나가는 서브넷을 선택합니다.
+                - [서브넷 연결 편집] public 용 서브넷 2개를 선택합니다.
+    - [private 라우팅 테이블 2a]
+        - [이름 태그] : lab-web-rt-private-2a
+        - [VPC] : lab-vpc
+            - [서브넷 연결]
+                - [서브넷 연결 편집] private 용 2a 서브넷 2개를 선택합니다.
+    - [private 라우팅 테이블 2c]
+            - [이름 태그] : lab-web-rt-private-2c
+            - [VPC] : lab-vpc
+                - [서브넷 연결]
+                    - [서브넷 연결 편집] private 용 2c 서브넷 2개를 선택합니다.
+- [NAT 게이트웨이] : VPC 의 private 에 있는 aws 리소스가 인터넷으로 트래픽이 통할 수 있도록 도와주는 서비스 
+    - 총 2개를 만들것이며 2a 용 2c 용 으로 각각 생성됩니다. 
+    왜 이렇게 되냐면 NAT 게이트 웨이는 그 서브넷에대한 NAT 기능을 주로 하기 때문에 다른 서브넷에 기능을 사용할 수 없습니다.
+    예를 들면 2a 는 2c 영역에 대해서는 NAT 를 할 수 없는 기능이 있습니다.
+    그래서 2a 의 서브넷에 NAT 게이트 웨이를 올릴것이며
+    2c 에 NAT 게이트 웨이를 하나씩 올릴것입니다.
+    - [NAT 게이트웨이 생성 2a]
+        - [이름 태그] : lab-web-nat-2a
+        - [서브넷] : lab-web-public1-2a
+        - [탄력적 IP 할당 ID] 탄력적 IP 할당 클릭하여 받습니다.
+    - [NAT 게이트웨이 생성 2c] 
+        - [이름 태그] : lab-web-nat-2c
+        - [서브넷] : lab-web-public2-2c
+        - [탄력적 IP 할당 ID] 탄력적 IP 할당 클릭하여 받습니다.
+- [Bastion 생성]
+    - [public] EC2 AMI 탭 선택 후 생성된 AMI 체크 후 시작하기를 클릭합니다.
+        - [인스턴스 구성]
+            - [네트워크] : lab-vpc
+            - [서브넷] : lab-web-public1-2a
+            - [퍼블릭 IP 자동 할당] : 활성화
+        - [태그 추가]
+            - [Key] : Name
+            - [Value] : lab-web-srv-bastion
+        - [보안 그룹 구성]
+            - [보안 그룹 이름] : lab-web-bastion-sg
+        - Bastion 용 keypair 를 따로 만들어서 운용하는게 훨신 보안이 강화된 방식입니다.
+    - [private] EC2 AMI 탭 선택 후 생성된 AMI 체크 후 시작하기를 클릭합니다.
+        - [인스턴스 구성]
+            - [네트워크] : lab-vpc
+            - [서브넷] : lab-web-private1-2a
+            - [퍼블릭 IP 자동 할당] : 테스트를 위해서 활성화
+        - [태그 추가]
+            - [Key] : Name
+            - [Value] : lab-web-srv-private-2a
+        - [보안 그룹 구성] 웹 서버용
+            - [보안 그룹 이름] : lab-web-bastion-sg
+        - Bastion 용 keypair 를 따로 만들어서 운용하는게 훨신 보안이 강화된 방식입니다.
+- [lab-web-srv-bastion ec2] 접근합니다.
+    - 해당 ec2 에 lab-web-srv-private-2c pem 키를 복사해옵니다.
+        - 명령어 sudo vi jjunpro-k-srv.pem -> i키 클릭 리눅스 편집기로 들어가서 pem 복사된 키를 붙여넣기 합니다. esc 클릭 후 :wq 명령어 
+        - ssh -i jjunpro-k-srv.pem ec2-user@10.0.3.46 명령어를 작성하여 연결합니다. 여기서 아이피는 lab-web-srv-private-2c ec2 의 private ip를 복사하여 접속합니다.
+        - 웹으로 통신이 잘 되는지 확인합니다. ping google.co.kr 테스트 해보면 접근되지 않습니다.
+        - 웹으로 나가지 않는 이유는 private 라우팅을 2개 생성하였지만 NAT 을 타고 나가라는 라우팅이 추가되지 않아서 그렇습니다.
+            - VPC -> 라우팅 테이블 -> lab-web-rt-private-2a -> 라우팅 을 확인해보면 내부 ip 만 추가되어 있음을 확인할 수 있습니다.
+            - 라우트에 웹으로 나갈 수 있도록 추가해야합니다.
+                - [라우팅 편집] 
+                    - [대상] : 0.0.0.0/0 모든 ip 주소는 타겟으로 가라고 명시
+                    - [대상] : nat 게이트웨이 a2 설정
+            - 그 후 다시 ping 을 검색하면 웹으로 통신이 됩니다.
+           
+
+- IPv4 CIDR 블록을 10.0.~.0/24 로 만들어 준 이유
+- VPC 는 Virtual Private Cloud 의 약자입니다. 즉 AWS 에서 가상 개인(사설) 네트워크 구성을 가능하게 해주는 네트워크 서비스입니다.
+    - 일반적으로 IPv4  의 IP Address 체계에서 크게 2가지로 분류한다면 Public(공인) IP Address 
+        - 1. 인터넷에서 사용할 수 있는 공인 IP Address 입니다.
+        - 2. 예를 들어 112.475.136.xxx 라는 IP Address 대역입니다. 다음 URL 을 참조 해주세요. https://krnic.or.kr/jsp/statboard/IPAS/ovrse/cont/currentV4Addr.jsp
+    - Private(사설) IP Address
+        - 1. 인터넷상에서는 사용할 수 없고 내부망에서만 사용할 수 있는 IP Address 입니다.
+        - 2. 대표적인 3개의 IP Address 대역 
+            - 1. 10.0.0.0/8, 172.16.0.0/16, 192.168.0.0/24 
+            - 2. AWS 에서는 10.0.0.0/16, 172.16.0.0/16, 192.168.0.0/24 등을 사용할 수 있습니다.
+            - 3. 따라서 VPC 내부에서는 선언한 CIDR 10.0.0.0/16 의 Private IP Address 로 EC2 같은 리소스들에게 IP Address 를 할당하고 인터넷 방향으로 통신을 하고자 하면  
+            Public Subnet 은 Internet Gateway 를 통해서,  
+            Private Subnet 은 NAT Gateway 를 통해서 아웃바운드 통신하게 됩니다.
+        - 3. Subnet 10.0.1.0/24 로 설정한 이유
+            - 1. 먼저 Subnet 을 하는 이유를 말씀드려야 될 것 같네요.  
+            만일 10.0.0.0/16 을 통으로 사용하게 되면 65xxx개의 IP Address 를 사용할 수 있습니다.   
+            그럼 논리적으로 EC2 를 65xxx 개에 IP Address 할당이 가능하다는 얘기가 됩니다.  
+            한번에 65xxx개의 AWS 리소스를 사용하기는 정말 어렵습니다.  
+            사용한다고 하면 1000개 또는 2000개 정도 일겁니다.  
+            AWS 를 사용하는 넷플릭스도 2000 ~ 3000 여개를 사용하는 것으로 알고 있습니다.  
+            그럼 나머지 63xxx ~ 62xxx 개는 사용하지 않게되니 낭비가 되는 셈입니다.  
+            - 2. Subnet 이란 이런 IP Address  를 좀 더 낭비 없이 잘 사용할 수 있도록 IP Address  대역을 합리적으로 사용하고자 작게 나누는 것을 말합니다.   
+            이 실습의 Subnet 처럼 10.0.1.0/24 로 선언하면 256 개 IP Address 를 사용할 수 있게 됩니다.  
+            자세한 사항은 다음 Link 를 참조해주세요.  
+            https://ko.wikipedia.org/wiki/%EB%B6%80%EB%B6%84%EB%A7%9D
+
+![VPC 생성](./images/img_07.png)
+![서브넷 생성](./images/img_08.png)
+![서브넷 리스트](./images/img_09.png)
+![인터넷 게이트웨이 생성](./images/img_10.png)
+![private 라우팅 테이블](./images/img_11.png)
+![NAT 게이트웨이](./images/img_12.png)
+![NAT 게이트웨이 생성 확인](./images/img_13.png)
